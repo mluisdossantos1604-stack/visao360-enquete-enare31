@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema Integrado de Enquete ao Vivo | FEBRAMAT</title>
+<!-- Firebase App e Realtime Database SDKs via CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<!-- QRCode.js Library para geração dinâmica do QR Code -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    body {
+        background-color: #0b132b;
+        color: #f8fafc;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Modos de Exibição */
+    .view-mode { display: none; }
+    .view-mode.active { display: flex; flex-direction: column; flex: 1; }
+
+    /* Barra Superior de Alternância e Status */
+    .mode-switcher-bar {
+        background-color: #070b19;
+        border-bottom: 1px solid #1e293b;
+        padding: 8px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.8rem;
+    }
+
+    .mode-btn {
+        background: #1c2541;
+        color: #38bdf8;
+        border: 1px solid #334155;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-left: 6px;
+    }
+
+    .mode-btn.active {
+        background: #f59e0b;
+        color: #0f172a;
+        border-color: #f59e0b;
+    }
+
+    .action-btn-danger {
+        background: #ef4444;
+        color: #ffffff;
+        border: 1px solid #dc2626;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 700;
+        margin-left: 6px;
+    }
+    .action-btn-danger:hover { background: #dc2626; }
+
+    .action-btn-edit {
+        background: #3b82f6;
+        color: #ffffff;
+        border: 1px solid #2563eb;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 700;
+        margin-left: 6px;
+    }
+    .action-btn-edit:hover { background: #2563eb; }
+
+    .action-btn-excel {
+        background: #10b981;
+        color: #ffffff;
+        border: 1px solid #059669;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 700;
+        margin-left: 6px;
+    }
+    .action-btn-excel:hover { background: #059669; }
+
+    /* ESTILOS DO TELÃO (APRESENTAÇÃO) */
+    header.dash-header {
+        background: linear-gradient(135deg, #1c2541 0%, #0b132b 100%);
+        padding: 18px 40px;
+        border-bottom: 3px solid #f59e0b;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .brand-title h1 { font-size: 1.5rem; font-weight: 800; color: #ffffff; text-transform: uppercase; }
+    .brand-title p { font-size: 0.9rem; color: #38bdf8; font-weight: 500; margin-top: 2px; }
+    .badge-event { background-color: #f59e0b; color: #0f172a; padding: 6px 16px; font-weight: 800; border-radius: 20px; font-size: 0.85rem; text-transform: uppercase; }
+
+    .dash-container { display: flex; flex: 1; padding: 25px 40px; gap: 30px; }
+    .questions-panel { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+    .section-title { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; display: flex; align-items: center; justify-content: space-between; }
+    .total-votes-tag { background-color: #1e293b; color: #f59e0b; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; border: 1px solid #f59e0b; }
+
+    .question-card { background-color: #1c2541; border: 1px solid #334155; border-left: 5px solid #38bdf8; border-radius: 10px; padding: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .q-meta { font-size: 0.8rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; margin-bottom: 4px; }
+    .q-text { font-size: 1.05rem; font-weight: 600; color: #ffffff; margin-bottom: 12px; }
+
+    .btn-reveal { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; border: none; padding: 8px 16px; font-size: 0.85rem; font-weight: 700; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-reveal:hover { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+
+    .results-container { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid #334155; }
+    .bar-option { margin-bottom: 10px; }
+    .bar-label { display: flex; justify-content: space-between; font-size: 0.88rem; color: #cbd5e1; margin-bottom: 4px; }
+    .bar-bg { background-color: #0f172a; height: 14px; border-radius: 7px; overflow: hidden; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%); width: 0%; transition: width 0.8s ease-in-out; border-radius: 7px; }
+    .bar-fill.highlight { background: linear-gradient(90deg, #f59e0b 0%, #ef4444 100%); }
+    .commentator-tag { margin-top: 12px; background-color: #0f172a; border: 1px solid #f59e0b; border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; color: #f8fafc; }
+
+    .sidebar-panel { width: 350px; display: flex; flex-direction: column; gap: 20px; }
+    .qr-card { background-color: #1c2541; border: 1px solid #334155; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .qr-title { font-size: 1.1rem; font-weight: 800; color: #ffffff; text-transform: uppercase; margin-bottom: 6px; }
+    .qr-subtitle { font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px; }
+    .qr-image-wrap { background: #ffffff; padding: 12px; border-radius: 12px; display: inline-block; }
+    #qrcode-canvas { display: flex; justify-content: center; }
+
+    .live-status { display: inline-flex; align-items: center; gap: 8px; background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid #22c55e; padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; margin-top: 14px; text-transform: uppercase; }
+    .pulse-dot { width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { transform: scale(0.95); } 70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); } 100% { transform: scale(0.95); } }
+
+    /* ESTILOS DO FORMULÁRIO PARTICIPANTE (MOBILE) */
+    .mobile-header { background: linear-gradient(135deg, #1c2541 0%, #0b132b 100%); padding: 16px; border-bottom: 3px solid #f59e0b; text-align: center; }
+    .mobile-container { max-width: 600px; margin: 0 auto; padding: 16px; width: 100%; flex: 1; }
+    .opt-label { display: flex; align-items: flex-start; gap: 12px; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; cursor: pointer; margin-bottom: 8px; font-size: 0.88rem; }
+    .opt-label input[type="radio"] { accent-color: #f59e0b; width: 18px; height: 18px; margin-top: 2px; }
+    .btn-submit { width: 100%; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #0f172a; font-size: 1rem; font-weight: 800; border: none; padding: 14px; border-radius: 8px; cursor: pointer; text-transform: uppercase; margin-top: 10px; }
+    .success-screen { display: none; text-align: center; padding: 30px 20px; background-color: #1c2541; border: 1px solid #22c55e; border-radius: 12px; }
+
+    /* MODAL DE EDIÇÃO DO FORMULÁRIO E EVENTO */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(11, 19, 43, 0.85);
+        z-index: 999;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-card {
+        background-color: #1c2541;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 800px;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 24px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #334155;
+    }
+    .modal-header h2 { font-size: 1.2rem; color: #f59e0b; text-transform: uppercase; }
+    .edit-q-card {
+        background-color: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    .edit-input {
+        width: 100%;
+        background: #1c2541;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 8px 12px;
+        color: #fff;
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+    }
+    .edit-input:focus { border-color: #38bdf8; outline: none; }
+    .btn-add-opt {
+        background: #1e293b;
+        color: #38bdf8;
+        border: 1px solid #334155;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-bottom: 8px;
+    }
+
+    footer { background-color: #070b19; text-align: center; padding: 12px; font-size: 0.75rem; color: #64748b; border-top: 1px solid #1e293b; }
+</style>
+</head>
+<body>
+
+    <!-- Bar de Modos / Controle Admin -->
+    <div class="mode-switcher-bar">
+        <div><strong>Status Banco de Dados:</strong> <span id="db-status">Conectando...</span></div>
+        <div>
+            <button class="action-btn-danger" onclick="resetFormAnswers()">🔄 Resetar - Visão 360° da Categoria</button>
+            <button class="action-btn-edit" onclick="openEditorModal()">✏️ Editar Evento e Visão 360°</button>
+            <button class="action-btn-excel" onclick="exportToExcel()">📊 Extrair Respostas (Excel)</button>
+            <span style="margin: 0 8px; color: #334155;">|</span>
+            Alternar Exibição:
+            <button class="mode-btn active" onclick="switchView('presentation')">🖥️ Telão (Apresentação)</button>
+            <button class="mode-btn" onclick="switchView('mobile')">📱 Celular (Votação)</button>
+        </div>
+    </div>
+
+    <!-- VISÃO 1: TELÃO DE APRESENTAÇÃO -->
+    <div id="view-presentation" class="view-mode active">
+        <header class="dash-header">
+            <div class="brand-title">
+                <h1 id="header-main-title">Talk Show Indústrias: Tintas Imobiliárias</h1>
+                <p id="header-sub-title">Moderador: Marcio Santos (FEBRAMAT) | Palco Teatro Cassino</p>
+            </div>
+            <div class="badge-event" id="header-badge-title">31º ENARE - Poços de Caldas/MG</div>
+        </header>
+
+        <div class="dash-container">
+            <div class="questions-panel">
+                <div class="section-title">
+                    <span id="vision-360-title">📊 Visão 360° da Categoria - Perguntas Interativas</span>
+                    <span class="total-votes-tag">Votos Contabilizados: <strong id="total-votes-count">0</strong></span>
+                </div>
+
+                <!-- Lista dinâmica de perguntas da Dashboard -->
+                <div id="dashboard-questions-list"></div>
+            </div>
+
+            <!-- Sidebar / QR Code -->
+            <div class="sidebar-panel">
+                <div class="qr-card">
+                    <div class="qr-title">PARTICIPE AO VIVO</div>
+                    <div class="qr-subtitle">Aponte a câmera do celular para responder à enquete agora</div>
+                    <div class="qr-image-wrap"><div id="qrcode-canvas"></div></div>
+                    <div class="live-status"><div class="pulse-dot"></div> Votação Aberta na Plenária</div>
+                </div>
+
+                <div style="background-color: #1c2541; border: 1px solid #334155; border-radius: 12px; padding: 18px;">
+                    <div style="font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px;">Executivos no Palco</div>
+                    <div style="font-size: 0.88rem; color: #cbd5e1; display: flex; flex-direction: column; gap: 6px;">
+                        <div>Nathan Bampi <span style="float: right; color: #38bdf8; font-weight: 600;">Hydronorth</span></div>
+                        <div>Eric Fusco <span style="float: right; color: #38bdf8; font-weight: 600;">Eucatex</span></div>
+                        <div>Eduardo Neves <span style="float: right; color: #38bdf8; font-weight: 600;">Coral</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISÃO 2: FORMULÁRIO PARTICIPANTE (MOBILE) -->
+    <div id="view-mobile" class="view-mode">
+        <header class="mobile-header">
+            <span style="background: #f59e0b; color: #0f172a; padding: 3px 10px; border-radius: 10px; font-weight: 800; font-size: 0.75rem;" id="mobile-badge-title">31º ENARE</span>
+            <h1 style="font-size: 1.2rem; color: #fff; margin-top: 4px;" id="mobile-main-title">Talk Show Tintas Imobiliárias</h1>
+            <p style="font-size: 0.8rem; color: #38bdf8;">Enquete Virtual em Tempo Real</p>
+        </header>
+
+        <div class="mobile-container">
+            <form id="mobileForm" onsubmit="handleMobileSubmit(event)">
+                <div style="background-color: #1c2541; border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; color: #cbd5e1;">
+                    📲 Responda às perguntas abaixo. Seus votos entram na hora na tela da plenária.
+                </div>
+
+                <!-- Lista dinâmica de perguntas Mobile -->
+                <div id="mobile-questions-list"></div>
+
+                <!-- Identificação -->
+                <div style="background-color: #1c2541; border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                    <label style="color: #f59e0b; font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">NOME DA LOJA / REDE (OPCIONAL):</label>
+                    <input type="text" id="rede_name" placeholder="Rede Clube da Casa - Unidade Poços" style="width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; color: #fff;">
+                </div>
+
+                <button type="submit" class="btn-submit">🚀 Confirmar e Enviar Voto</button>
+            </form>
+
+            <div class="success-screen" id="mobileSuccess">
+                <h2>✅ Voto Registrado com Sucesso!</h2>
+                <p>Sua participação foi computada em tempo real no banco de dados da FEBRAMAT.</p>
+                <p style="margin-top: 12px; color: #38bdf8; font-weight: 600;">Olhe para o telão do Teatro Cassino para acompanhar o debate dos executivos!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO DO FORMULÁRIO E EVENTO -->
+    <div class="modal-overlay" id="editorModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>✏️ Editar Informações do Evento, Plataforma e Perguntas</h2>
+                <button onclick="closeEditorModal()" style="background:none; border:none; color:#cbd5e1; font-size:1.4rem; cursor:pointer;">✖</button>
+            </div>
+            
+            <!-- BLOCO DE EDIÇÃO DOS TÍTULOS DO EVENTO E VISÃO 360 -->
+            <div style="background-color: #0f172a; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                <strong style="color: #f59e0b; display: block; margin-bottom: 10px; font-size: 0.95rem;">🏷️ IDENTIFICAÇÃO DO EVENTO E NOME DA PLATAFORMA DE VISÃO 360°</strong>
+                
+                <label style="font-size:0.75rem; color:#94a3b8;">Título Principal do Evento / Talk Show:</label>
+                <input type="text" id="edit-main-title-input" class="edit-input">
+                
+                <label style="font-size:0.75rem; color:#94a3b8;">Subtítulo (Moderador / Local / Palco):</label>
+                <input type="text" id="edit-sub-title-input" class="edit-input">
+
+                <label style="font-size:0.75rem; color:#94a3b8;">Selo / Tag do Evento (Ex: 31º ENARE):</label>
+                <input type="text" id="edit-badge-title-input" class="edit-input">
+
+                <label style="font-size:0.75rem; color:#94a3b8;">Nome da Plataforma de Visão (Painel Central):</label>
+                <input type="text" id="edit-vision-360-input" class="edit-input">
+            </div>
+
+            <h3 style="font-size: 1rem; color: #38bdf8; margin-bottom: 12px; text-transform: uppercase;">Perguntas da Enquete</h3>
+            <div id="editor-questions-container"></div>
+
+            <div style="display:flex; justify-content:space-between; margin-top:20px; border-top:1px solid #334155; padding-top:16px;">
+                <button onclick="addNewQuestionToEditor()" style="background:#22c55e; color:#0f172a; border:none; padding:10px 16px; border-radius:6px; font-weight:800; cursor:pointer;">➕ Adicionar Nova Pergunta</button>
+                <div>
+                    <button onclick="closeEditorModal()" style="background:#334155; color:#fff; border:none; padding:10px 16px; border-radius:6px; font-weight:700; cursor:pointer; margin-right:8px;">Cancelar</button>
+                    <button onclick="saveFormConfiguration()" style="background:#f59e0b; color:#0f172a; border:none; padding:10px 20px; border-radius:6px; font-weight:800; cursor:pointer;">💾 Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer id="footer-text">FEBRAMAT - Federação Brasileira das Redes Associativistas de Materiais de Construção | 31º ENARE</footer>
+
+    <!-- SCRIPT DE CONEXÃO REALTIME & CUSTOMIZAÇÃO DINÂMICA -->
+    <script>
+        // CONFIGURAÇÕES PADRÃO DO EVENTO
+        const defaultEventMeta = {
+            mainTitle: "Talk Show Indústrias: Tintas Imobiliárias",
+            subTitle: "Moderador: Marcio Santos (FEBRAMAT) | Palco Teatro Cassino",
+            badgeTitle: "31º ENARE - Poços de Caldas/MG",
+            vision360Title: "📊 Visão 360° da Categoria - Perguntas Interativas"
+        };
+
+        let currentEventMeta = defaultEventMeta;
+        try {
+            const savedMeta = localStorage.getItem('enare31_event_meta');
+            if(savedMeta) {
+                const parsedMeta = JSON.parse(savedMeta);
+                if(parsedMeta && parsedMeta.mainTitle) currentEventMeta = parsedMeta;
+            }
+        } catch(e) { console.warn(e); }
+
+        // ESTRUTURA INICIAL PADRÃO DAS PERGUNTAS DO BRIEFING
+        const defaultSchema = [
+            {
+                id: "q1",
+                meta: "Pergunta 1 | Entendendo as Necessidades Gerais",
+                title: "Qual é o maior gargalo para sua loja vender mais tintas com alta margem?",
+                options: [
+                    "Equipe de vendas sem conhecimento técnico suficiente.",
+                    "Excesso de opções de produtos / Gestão de estoque complexa.",
+                    "Forte concorrência de preço com lojas 100% especializadas.",
+                    "Falta de ações de trade marketing e ambientação na loja."
+                ],
+                commentator: "🎙️ <strong>Debate no Palco:</strong> Nathan Bampi (Hydronorth) analisa o gargalo de conhecimento técnico e ações de PDV."
+            },
+            {
+                id: "q2",
+                meta: "Pergunta 2 | Gestão & Sortimento",
+                title: "Para lojas não especializadas em tintas, qual é o principal obstáculo no dia a dia do seu PDV?",
+                options: [
+                    "Dificuldade em definir o mix ideal de produtos e tintas técnicas.",
+                    "Equipe de vendas com receio / falta de conhecimento técnico.",
+                    "Capital parado em estoque com baixo giro de cores/acabamentos."
+                ],
+                commentator: "🎙️ <strong>Debate no Palco:</strong> Eric Fusco (Eucatex) orienta sobre capacitação ágil de balconistas e simplificação no balcão."
+            },
+            {
+                id: "q3",
+                meta: "Pergunta 3 | Rentabilidade & Competitividade",
+                title: "Qual estratégia visual e comercial traria maior impacto para aumentar sua margem no setor de tintas?",
+                options: [
+                    "Implantação / Otimização de sistema tintométrico para reduzir estoque físico.",
+                    "Treinamento prático e rápido focado em venda cruzada (Tintas + Impermeabilizantes).",
+                    "Ambientação visual e exposição temática de alto impacto no balcão."
+                ],
+                commentator: "🎙️ <strong>Debate no Palco:</strong> Eduardo Neves (Coral) aborda a rentabilidade por m² através de tintometria e agregação de valor."
+            },
+            {
+                id: "q4",
+                meta: "Pergunta 4 | Ação Prática & Consultoria Direct-to-Store",
+                title: "Sua loja/rede tem interesse em receber um diagnóstico técnico e plano de ação individualizado para se especializar e acelerar as vendas da categoria?",
+                options: [
+                    "Sim, consultoria para Sistemas Tintométricos e Treinamento técnico de equipes.",
+                    "Sim, consultoria para Tintas Técnicas, Proteção e Impermeabilizantes.",
+                    "Sim, consultoria para Mix de Giro Rápido e Eficiência de PDV.",
+                    "Gostaria de receber consultoria de TODAS as vertentes estratégicas."
+                ],
+                commentator: "🎙️ <strong>Encerramento & Encaminhamento:</strong> Marcio Santos sintetiza as solicitações de consultoria para o plano de ação das Redes FEBRAMAT."
+            }
+        ];
+
+        let currentSchema = defaultSchema;
+        try {
+            const savedSchema = localStorage.getItem('enare31_custom_schema');
+            if(savedSchema) {
+                const parsed = JSON.parse(savedSchema);
+                if(Array.isArray(parsed) && parsed.length > 0) currentSchema = parsed;
+            }
+        } catch(e) { console.warn(e); }
+
+        let votesHistory = [];
+
+        // CONFIGURAÇÃO DO FIREBASE (Substitua pelos dados do seu Console Firebase)
+       const firebaseConfig = {
+    apiKey: "Sua_Chave_Gerada_Aqui",
+    authDomain: "enquete-febramat.firebaseapp.com",
+    databaseURL: "https://enquete-febramat-default-rtdb.firebaseio.com",
+    projectId: "enquete-febramat",
+    storageBucket: "enquete-febramat.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "1:123456789:web:abcdef"
+};
+
+        let db = null;
+        let isFirebaseActive = false;
+
+        try {
+            if (firebaseConfig.databaseURL && !firebaseConfig.databaseURL.includes("SEU_PROJETO")) {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.database();
+                isFirebaseActive = true;
+                document.getElementById("db-status").innerHTML = "<span style='color: #4ade80;'>🟢 Conectado ao Firebase Realtime</span>";
+            } else {
+                document.getElementById("db-status").innerHTML = "<span style='color: #f59e0b;'>⚠️ Modo Simulação (Insira chaves do Firebase para produção)</span>";
+            }
+        } catch (e) {
+            console.warn("Modo simulação ativo.", e);
+        }
+
+        // INICIALIZAÇÃO DA INTERFACE DINÂMICA
+        function initApp() {
+            applyEventMeta();
+            renderDashboardFromSchema();
+            renderMobileFromSchema();
+
+            try {
+                const currentUrl = window.location.href.split('#')[0] + "#vote";
+                const qrcodeContainer = document.getElementById("qrcode-canvas");
+                if(qrcodeContainer) {
+                    qrcodeContainer.innerHTML = "";
+                    new QRCode(qrcodeContainer, {
+                        text: currentUrl, width: 150, height: 150, colorDark : "#0f172a", colorLight : "#ffffff"
+                    });
+                }
+            } catch(e) { console.warn(e); }
+
+            if(window.location.hash === "#vote") switchView('mobile');
+
+            if (isFirebaseActive && db) {
+                db.ref('enare31_votos').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    votesHistory = data ? Object.values(data) : [];
+                    processAndRenderVotes(votesHistory);
+                });
+                db.ref('enare31_schema').on('value', (snapshot) => {
+                    const remoteSchema = snapshot.val();
+                    if(remoteSchema && Array.isArray(remoteSchema) && remoteSchema.length > 0) {
+                        currentSchema = remoteSchema;
+                        localStorage.setItem('enare31_custom_schema', JSON.stringify(currentSchema));
+                        renderDashboardFromSchema();
+                        renderMobileFromSchema();
+                        processAndRenderVotes(votesHistory);
+                    }
+                });
+                db.ref('enare31_event_meta').on('value', (snapshot) => {
+                    const remoteMeta = snapshot.val();
+                    if(remoteMeta && remoteMeta.mainTitle) {
+                        currentEventMeta = remoteMeta;
+                        localStorage.setItem('enare31_event_meta', JSON.stringify(currentEventMeta));
+                        applyEventMeta();
+                    }
+                });
+            } else {
+                try {
+                    votesHistory = JSON.parse(localStorage.getItem('enare31_local_votes')) || [];
+                } catch(e) { votesHistory = []; }
+                processAndRenderVotes(votesHistory);
+            }
+        }
+
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", initApp);
+        } else {
+            initApp();
+        }
+
+        function applyEventMeta() {
+            const hMain = document.getElementById('header-main-title');
+            const mMain = document.getElementById('mobile-main-title');
+            const hSub = document.getElementById('header-sub-title');
+            const hBadge = document.getElementById('header-badge-title');
+            const mBadge = document.getElementById('mobile-badge-title');
+            const v360 = document.getElementById('vision-360-title');
+
+            if(hMain) hMain.innerText = currentEventMeta.mainTitle || defaultEventMeta.mainTitle;
+            if(mMain) mMain.innerText = currentEventMeta.mainTitle || defaultEventMeta.mainTitle;
+            if(hSub) hSub.innerText = currentEventMeta.subTitle || defaultEventMeta.subTitle;
+            if(hBadge) hBadge.innerText = currentEventMeta.badgeTitle || defaultEventMeta.badgeTitle;
+            if(mBadge) mBadge.innerText = currentEventMeta.badgeTitle || defaultEventMeta.badgeTitle;
+            if(v360) v360.innerText = currentEventMeta.vision360Title || defaultEventMeta.vision360Title;
+        }
+
+        function switchView(mode) {
+            document.querySelectorAll('.view-mode').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.mode-btn').forEach(el => el.classList.remove('active'));
+
+            if(mode === 'presentation') {
+                document.getElementById('view-presentation').classList.add('active');
+                document.querySelectorAll('.mode-btn')[0].classList.add('active');
+            } else {
+                document.getElementById('view-mobile').classList.add('active');
+                document.querySelectorAll('.mode-btn')[1].classList.add('active');
+            }
+        }
+
+        // RENDERIZADORES DA DASHBOARD E DO MOBILE BASEADOS NO SCHEMA
+        function renderDashboardFromSchema() {
+            const container = document.getElementById("dashboard-questions-list");
+            if(!container) return;
+            container.innerHTML = "";
+
+            currentSchema.forEach((q, qIdx) => {
+                let optionsHtml = q.options.map((optText, optIdx) => `
+                    <div class="bar-option">
+                        <div class="bar-label"><span>${optIdx + 1}. ${optText}</span><strong id="dash-${q.id}-p${optIdx}">0% (0)</strong></div>
+                        <div class="bar-bg"><div class="bar-fill" id="dash-${q.id}-b${optIdx}"></div></div>
+                    </div>
+                `).join('');
+
+                const card = document.createElement("div");
+                card.className = "question-card";
+                card.innerHTML = `
+                    <div class="q-meta">${q.meta || 'Pergunta ' + (qIdx + 1)}</div>
+                    <div class="q-text">"${q.title}"</div>
+                    <button class="btn-reveal" onclick="toggleReveal('${q.id}')">🔓 Apresentar Resultados ao Vivo & Debate</button>
+                    <div class="results-container" id="dash-results-${q.id}">
+                        ${optionsHtml}
+                        <div class="commentator-tag">${q.commentator || ''}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderMobileFromSchema() {
+            const container = document.getElementById("mobile-questions-list");
+            if(!container) return;
+            container.innerHTML = "";
+
+            currentSchema.forEach((q, qIdx) => {
+                let optionsHtml = q.options.map((optText, optIdx) => `
+                    <label class="opt-label">
+                        <input type="radio" name="m_${q.id}" value="${optIdx}" required>
+                        <span>${optText}</span>
+                    </label>
+                `).join('');
+
+                const qBox = document.createElement("div");
+                qBox.style = "background-color: #1c2541; border-left: 4px solid #38bdf8; border-radius: 8px; padding: 14px; margin-bottom: 14px;";
+                qBox.innerHTML = `
+                    <div style="color: #f59e0b; font-size: 0.75rem; font-weight: 700;">PERGUNTA ${qIdx + 1}</div>
+                    <div style="font-weight: 600; color: #fff; margin: 4px 0 10px 0;">${q.title}</div>
+                    ${optionsHtml}
+                `;
+                container.appendChild(qBox);
+            });
+        }
+
+        // SUBMISSÃO E PROCESSAMENTO DE VOTOS
+        function handleMobileSubmit(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const voteData = { timestamp: new Date().toLocaleString("pt-BR"), rede: document.getElementById('rede_name').value || 'Anônimo' };
+
+            currentSchema.forEach(q => {
+                const selectedOptIndex = parseInt(formData.get(`m_${q.id}`));
+                voteData[q.id] = selectedOptIndex;
+                voteData[`${q.id}_texto`] = q.options[selectedOptIndex] || "";
+            });
+
+            if (isFirebaseActive && db) {
+                db.ref('enare31_votos').push(voteData)
+                    .then(() => showSuccessScreen())
+                    .catch(err => alert("Erro ao enviar: " + err.message));
+            } else {
+                votesHistory.push(voteData);
+                localStorage.setItem('enare31_local_votes', JSON.stringify(votesHistory));
+                processAndRenderVotes(votesHistory);
+                showSuccessScreen();
+            }
+        }
+
+        function showSuccessScreen() {
+            document.getElementById('mobileForm').style.display = 'none';
+            document.getElementById('mobileSuccess').style.display = 'block';
+        }
+
+        function processAndRenderVotes(votes) {
+            const votesCountEl = document.getElementById('total-votes-count');
+            if(votesCountEl) votesCountEl.innerText = votes.length;
+
+            currentSchema.forEach(q => {
+                const optCounts = new Array(q.options.length).fill(0);
+                votes.forEach(v => {
+                    if (v[q.id] !== undefined && optCounts[v[q.id]] !== undefined) {
+                        optCounts[v[q.id]]++;
+                    }
+                });
+
+                const maxVal = Math.max(...optCounts);
+                optCounts.forEach((count, idx) => {
+                    const pct = votes.length > 0 ? Math.round((count / votes.length) * 100) : 0;
+                    const barEl = document.getElementById(`dash-${q.id}-b${idx}`);
+                    const labelEl = document.getElementById(`dash-${q.id}-p${idx}`);
+
+                    if (barEl && labelEl) {
+                        barEl.style.width = pct + '%';
+                        if (count === maxVal && maxVal > 0) barEl.classList.add('highlight');
+                        else barEl.classList.remove('highlight');
+                        labelEl.innerText = `${pct}% (${count} votos)`;
+                    }
+                });
+            });
+        }
+
+        function toggleReveal(qId) {
+            const container = document.getElementById(`dash-results-${qId}`);
+            if(container) container.style.display = (container.style.display === 'block') ? 'none' : 'block';
+        }
+
+        // FUNCIONALIDADE DE RESETAR VOTOS
+        function resetFormAnswers() {
+            if (confirm("Tem certeza que deseja RESETAR todas as respostas para uma nova sessão? Essa ação limpará os votos do telão.")) {
+                if (isFirebaseActive && db) {
+                    db.ref('enare31_votos').remove()
+                        .then(() => alert("Sessão resetada com sucesso no Firebase!"))
+                        .catch(err => alert("Erro ao resetar: " + err.message));
+                } else {
+                    votesHistory = [];
+                    localStorage.removeItem('enare31_local_votes');
+                    processAndRenderVotes([]);
+                    alert("Sessão resetada com sucesso!");
+                }
+            }
+        }
+
+        // EXPORTAÇÃO DE RESULTADOS EM EXCEL (CSV)
+        function exportToExcel() {
+            if (!votesHistory || votesHistory.length === 0) {
+                alert("Não há votos registrados para exportar.");
+                return;
+            }
+
+            let headers = ["Data/Hora", "Loja / Rede"];
+            currentSchema.forEach((q, idx) => {
+                headers.push(`P${idx + 1}: ${q.title.replace(/;/g, ',')}`);
+            });
+
+            let csvRows = [headers.join(";")];
+
+            votesHistory.forEach(vote => {
+                let row = [
+                    `"${vote.timestamp || ''}"`,
+                    `"${(vote.rede || 'Anônimo').replace(/"/g, '""')}"`
+                ];
+                currentSchema.forEach(q => {
+                    let optIdx = vote[q.id];
+                    let ansText = (optIdx !== undefined && q.options[optIdx]) ? q.options[optIdx] : (vote[`${q.id}_texto`] || 'Não respondeu');
+                    row.push(`"${ansText.replace(/"/g, '""')}"`);
+                });
+                csvRows.push(row.join(";"));
+            });
+
+            const csvContent = "\uFEFF" + csvRows.join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Resultados_Pesquisa_${(currentEventMeta.mainTitle || 'Evento').replace(/[^a-zA-Z0-9]/g, '_')}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // MODAL E EDITOR CUSTOMIZÁVEL DO FORMULÁRIO E DO EVENTO
+        function openEditorModal() {
+            document.getElementById('edit-main-title-input').value = currentEventMeta.mainTitle || '';
+            document.getElementById('edit-sub-title-input').value = currentEventMeta.subTitle || '';
+            document.getElementById('edit-badge-title-input').value = currentEventMeta.badgeTitle || '';
+            document.getElementById('edit-vision-360-input').value = currentEventMeta.vision360Title || '';
+
+            renderEditorQuestions();
+            document.getElementById('editorModal').classList.add('active');
+        }
+
+        function closeEditorModal() {
+            document.getElementById('editorModal').classList.remove('active');
+        }
+
+        function renderEditorQuestions() {
+            const container = document.getElementById('editor-questions-container');
+            if(!container) return;
+            container.innerHTML = "";
+
+            currentSchema.forEach((q, qIdx) => {
+                let optionsInputs = q.options.map((optText, optIdx) => `
+                    <div style="display:flex; gap:6px; margin-bottom:4px;">
+                        <input type="text" class="edit-input opt-field-${qIdx}" value="${optText}" placeholder="Texto da opção">
+                        <button onclick="removeOptionFromEditor(${qIdx}, ${optIdx})" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">✖</button>
+                    </div>
+                `).join('');
+
+                const card = document.createElement("div");
+                card.className = "edit-q-card";
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                        <strong style="color:#f59e0b;">Pergunta #${qIdx + 1}</strong>
+                        <button onclick="removeQuestionFromEditor(${qIdx})" style="background:#ef4444; color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; font-weight:700;">🗑️ Excluir Pergunta</button>
+                    </div>
+                    <label style="font-size:0.75rem; color:#94a3b8;">Título do Bloco / Meta:</label>
+                    <input type="text" id="edit-meta-${qIdx}" class="edit-input" value="${q.meta || ''}">
+                    
+                    <label style="font-size:0.75rem; color:#94a3b8;">Enunciado da Pergunta:</label>
+                    <input type="text" id="edit-title-${qIdx}" class="edit-input" value="${q.title}">
+                    
+                    <label style="font-size:0.75rem; color:#94a3b8;">Opções de Resposta:</label>
+                    <div id="opts-container-${qIdx}">${optionsInputs}</div>
+                    <button class="btn-add-opt" onclick="addOptionToEditor(${qIdx})">➕ Adicionar Opção</button>
+                    
+                    <label style="font-size:0.75rem; color:#94a3b8; display:block; margin-top:6px;">Comentarista / Tag de Palco:</label>
+                    <input type="text" id="edit-comm-${qIdx}" class="edit-input" value="${q.commentator || ''}">
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function addOptionToEditor(qIdx) {
+            currentSchema[qIdx].options.push("Nova opção de resposta");
+            renderEditorQuestions();
+        }
+
+        function removeOptionFromEditor(qIdx, optIdx) {
+            if (currentSchema[qIdx].options.length <= 2) {
+                alert("Uma pergunta deve ter no mínimo 2 opções!");
+                return;
+            }
+            currentSchema[qIdx].options.splice(optIdx, 1);
+            renderEditorQuestions();
+        }
+
+        function addNewQuestionToEditor() {
+            const newId = "q_" + Date.now();
+            currentSchema.push({
+                id: newId,
+                meta: `Pergunta ${currentSchema.length + 1} | Nova Categoria`,
+                title: "Digite aqui a nova pergunta...",
+                options: ["Opção 1", "Opção 2", "Opção 3"],
+                commentator: "🎙️ <strong>Debate no Palco:</strong> Comentário do Executivo."
+            });
+            renderEditorQuestions();
+        }
+
+        function removeQuestionFromEditor(qIdx) {
+            if (currentSchema.length <= 1) {
+                alert("O formulário deve ter no mínimo 1 pergunta!");
+                return;
+            }
+            if(confirm("Deseja realmente remover esta pergunta?")) {
+                currentSchema.splice(qIdx, 1);
+                renderEditorQuestions();
+            }
+        }
+
+        function saveFormConfiguration() {
+            // Salva Metadados do Evento
+            currentEventMeta.mainTitle = document.getElementById('edit-main-title-input').value;
+            currentEventMeta.subTitle = document.getElementById('edit-sub-title-input').value;
+            currentEventMeta.badgeTitle = document.getElementById('edit-badge-title-input').value;
+            currentEventMeta.vision360Title = document.getElementById('edit-vision-360-input').value;
+
+            localStorage.setItem('enare31_event_meta', JSON.stringify(currentEventMeta));
+
+            // Salva Schema das Perguntas
+            currentSchema.forEach((q, qIdx) => {
+                q.meta = document.getElementById(`edit-meta-${qIdx}`).value;
+                q.title = document.getElementById(`edit-title-${qIdx}`).value;
+                q.commentator = document.getElementById(`edit-comm-${qIdx}`).value;
+
+                const optInputs = document.querySelectorAll(`.opt-field-${qIdx}`);
+                q.options = [];
+                optInputs.forEach(input => q.options.push(input.value));
+            });
+
+            localStorage.setItem('enare31_custom_schema', JSON.stringify(currentSchema));
+
+            // Salva Firebase se ativo
+            if (isFirebaseActive && db) {
+                db.ref('enare31_schema').set(currentSchema);
+                db.ref('enare31_event_meta').set(currentEventMeta);
+            }
+
+            applyEventMeta();
+            renderDashboardFromSchema();
+            renderMobileFromSchema();
+            processAndRenderVotes(votesHistory);
+            closeEditorModal();
+            alert("Informações do evento e perguntas salvas com sucesso!");
+        }
+    </script>
+</body>
+</html>
