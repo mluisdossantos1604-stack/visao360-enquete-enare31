@@ -9,6 +9,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <!-- QRCode.js Library para geração dinâmica do QR Code -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- SheetJS (xlsx) Library para Manipulação e Exportação/Importação de Excel no Navegador -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
     * {
@@ -39,6 +41,8 @@
         justify-content: space-between;
         align-items: center;
         font-size: 0.8rem;
+        flex-wrap: wrap;
+        gap: 10px;
     }
 
     .mode-btn {
@@ -94,6 +98,18 @@
     }
     .action-btn-excel:hover { background: #059669; }
 
+    .action-btn-import {
+        background: #8b5cf6;
+        color: #ffffff;
+        border: 1px solid #7c3aed;
+        padding: 5px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 700;
+        margin-left: 6px;
+    }
+    .action-btn-import:hover { background: #7c3aed; }
+
     /* ESTILOS DO TELÃO (APRESENTAÇÃO) */
     header.dash-header {
         background: linear-gradient(135deg, #1c2541 0%, #0b132b 100%);
@@ -112,8 +128,20 @@
     .dash-container { display: flex; flex: 1; padding: 25px 40px; gap: 30px; }
     .questions-panel { flex: 1; display: flex; flex-direction: column; gap: 16px; }
 
-    .section-title { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; display: flex; align-items: center; justify-content: space-between; }
+    .section-title { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
     .total-votes-tag { background-color: #1e293b; color: #f59e0b; padding: 4px 12px; border-radius: 12px; font-size: 0.85rem; border: 1px solid #f59e0b; }
+
+    .search-box {
+        width: 100%;
+        background: #1c2541;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 8px 14px;
+        color: #fff;
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+    }
+    .search-box:focus { border-color: #38bdf8; outline: none; }
 
     .question-card { background-color: #1c2541; border: 1px solid #334155; border-left: 5px solid #38bdf8; border-radius: 10px; padding: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     .q-meta { font-size: 0.8rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; margin-bottom: 4px; }
@@ -222,6 +250,9 @@
             <button class="action-btn-danger" onclick="resetFormAnswers()">🔄 Resetar - Visão 360° da Categoria</button>
             <button class="action-btn-edit" onclick="openEditorModal()">✏️ Editar Evento e Visão 360°</button>
             <button class="action-btn-excel" onclick="exportToExcel()">📊 Extrair Respostas (Excel)</button>
+            <button class="action-btn-import" onclick="document.getElementById('excelFileInput').click()">📥 Importar Respostas (Excel)</button>
+            <!-- Input Oculto para Seleção de Arquivo Excel -->
+            <input type="file" id="excelFileInput" accept=".xlsx, .xls" style="display: none;" onchange="importFromExcel(event)">
             <span style="margin: 0 8px; color: #334155;">|</span>
             Alternar Exibição:
             <button class="mode-btn active" onclick="switchView('presentation')">🖥️ Telão (Apresentação)</button>
@@ -236,6 +267,7 @@
                 <h1 id="header-main-title">Talk Show Indústrias: Tintas Imobiliárias</h1>
                 <p id="header-sub-title">Moderador: Marcio Santos (FEBRAMAT) | Palco Teatro Cassino</p>
             </div>
+            <!-- Botão/Selo Laranja do Evento -->
             <div class="badge-event" id="header-badge-title">31º ENARE - Poços de Caldas/MG</div>
         </header>
 
@@ -246,11 +278,14 @@
                     <span class="total-votes-tag">Votos Contabilizados: <strong id="total-votes-count">0</strong></span>
                 </div>
 
+                <!-- Campo de Pesquisa / Filtragem em Tempo Real -->
+                <input type="text" id="searchVotesInput" class="search-box" placeholder="🔍 Pesquisar respostas por loja ou texto..." onkeyup="filterVotes()">
+
                 <!-- Lista dinâmica de perguntas da Dashboard -->
                 <div id="dashboard-questions-list"></div>
             </div>
 
-            <!-- Sidebar / QR Code -->
+            <!-- Sidebar / QR Code & Executivos no Palco -->
             <div class="sidebar-panel">
                 <div class="qr-card">
                     <div class="qr-title">PARTICIPE AO VIVO</div>
@@ -259,12 +294,13 @@
                     <div class="live-status"><div class="pulse-dot"></div> Votação Aberta na Plenária</div>
                 </div>
 
+                <!-- Painel dos Executivos e Participantes Principais do Palco -->
                 <div style="background-color: #1c2541; border: 1px solid #334155; border-radius: 12px; padding: 18px;">
-                    <div style="font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px;">Executivos no Palco</div>
-                    <div style="font-size: 0.88rem; color: #cbd5e1; display: flex; flex-direction: column; gap: 6px;">
-                        <div>Nathan Bampi <span style="float: right; color: #38bdf8; font-weight: 600;">Hydronorth</span></div>
-                        <div>Eric Fusco <span style="float: right; color: #38bdf8; font-weight: 600;">Eucatex</span></div>
-                        <div>Eduardo Neves <span style="float: right; color: #38bdf8; font-weight: 600;">Coral</span></div>
+                    <div id="panel-executives-title" style="font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 10px;">
+                        Executivos no Palco
+                    </div>
+                    <div id="executives-list-container" style="font-size: 0.88rem; color: #cbd5e1; display: flex; flex-direction: column; gap: 6px;">
+                        <!-- Conteúdo preenchido dinamicamente via JS -->
                     </div>
                 </div>
             </div>
@@ -305,7 +341,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE EDIÇÃO DO FORMULÁRIO E EVENTO -->
+    <!-- MODAL DE EDIÇÃO DO FORMULÁRIO, EVENTO E EXECUTIVOS -->
     <div class="modal-overlay" id="editorModal">
         <div class="modal-card">
             <div class="modal-header">
@@ -313,21 +349,24 @@
                 <button onclick="closeEditorModal()" style="background:none; border:none; color:#cbd5e1; font-size:1.4rem; cursor:pointer;">✖</button>
             </div>
             
-            <!-- BLOCO DE EDIÇÃO DOS TÍTULOS DO EVENTO E VISÃO 360 -->
+            <!-- BLOCO DE EDIÇÃO DOS TÍTULOS DO EVENTO E NOMES DO PALCO -->
             <div style="background-color: #0f172a; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
                 <strong style="color: #f59e0b; display: block; margin-bottom: 10px; font-size: 0.95rem;">🏷️ IDENTIFICAÇÃO DO EVENTO E NOME DA PLATAFORMA DE VISÃO 360°</strong>
                 
+                <label style="font-size:0.75rem; color:#94a3b8;">Selo Laranja do Evento (Ex: 31º ENARE - Poços de Caldas/MG):</label>
+                <input type="text" id="edit-badge-title-input" class="edit-input" placeholder="31º ENARE - Poços de Caldas/MG">
+
                 <label style="font-size:0.75rem; color:#94a3b8;">Título Principal do Evento / Talk Show:</label>
                 <input type="text" id="edit-main-title-input" class="edit-input">
                 
-                <label style="font-size:0.75rem; color:#94a3b8;">Subtítulo (Moderador / Local / Palco):</label>
-                <input type="text" id="edit-sub-title-input" class="edit-input">
-
-                <label style="font-size:0.75rem; color:#94a3b8;">Selo / Tag do Evento (Ex: 31º ENARE):</label>
-                <input type="text" id="edit-badge-title-input" class="edit-input">
+                <label style="font-size:0.75rem; color:#94a3b8;">Presidente do Evento / Moderador (Subtítulo):</label>
+                <input type="text" id="edit-sub-title-input" class="edit-input" placeholder="Moderador: Marcio Santos (FEBRAMAT) | Palco Teatro Cassino">
 
                 <label style="font-size:0.75rem; color:#94a3b8;">Nome da Plataforma de Visão (Painel Central):</label>
                 <input type="text" id="edit-vision-360-input" class="edit-input">
+
+                <label style="font-size:0.75rem; color:#f59e0b; display:block; margin-top:10px;">👥 Executivos e Participantes Principais no Palco (Um por linha no formato: Nome - Empresa):</label>
+                <textarea id="edit-executives-input" class="edit-input" style="height: 90px; font-family: monospace;" placeholder="Nathan Bampi - Hydronorth&#10;Eric Fusco - Eucatex&#10;Eduardo Neves - Coral"></textarea>
             </div>
 
             <h3 style="font-size: 1rem; color: #38bdf8; margin-bottom: 12px; text-transform: uppercase;">Perguntas da Enquete</h3>
@@ -352,7 +391,8 @@
             mainTitle: "Talk Show Indústrias: Tintas Imobiliárias",
             subTitle: "Moderador: Marcio Santos (FEBRAMAT) | Palco Teatro Cassino",
             badgeTitle: "31º ENARE - Poços de Caldas/MG",
-            vision360Title: "📊 Visão 360° da Categoria - Perguntas Interativas"
+            vision360Title: "📊 Visão 360° da Categoria - Perguntas Interativas",
+            executivesText: "Nathan Bampi - Hydronorth\nEric Fusco - Eucatex\nEduardo Neves - Coral"
         };
 
         let currentEventMeta = defaultEventMeta;
@@ -425,16 +465,16 @@
 
         let votesHistory = [];
 
-        // CONFIGURAÇÃO DO FIREBASE (Substitua pelos dados do seu Console Firebase)
-       const firebaseConfig = {
-    apiKey: "Sua_Chave_Gerada_Aqui",
-    authDomain: "enquete-febramat.firebaseapp.com",
-    databaseURL: "https://enquete-febramat-default-rtdb.firebaseio.com",
-    projectId: "enquete-febramat",
-    storageBucket: "enquete-febramat.appspot.com",
-    messagingSenderId: "123456789",
-    appId: "1:123456789:web:abcdef"
-};
+        // CONFIGURAÇÃO DO FIREBASE COM A APIKEY ATUALIZADA
+        const firebaseConfig = {
+            apiKey: "AIzaSyDvwRk0aI_TfoJB6zN-Vyf70LUX0cZcke4", // Linha 352: Chave API real do Firebase
+            authDomain: "enquete-febramat.firebaseapp.com",
+            databaseURL: "https://enquete-febramat-default-rtdb.firebaseio.com",
+            projectId: "enquete-febramat",
+            storageBucket: "enquete-febramat.appspot.com",
+            messagingSenderId: "117644702270",
+            appId: "1:117644702270:web:c8c5ab1d67d0951fcd976f"
+        };
 
         let db = null;
         let isFirebaseActive = false;
@@ -523,6 +563,28 @@
             if(hBadge) hBadge.innerText = currentEventMeta.badgeTitle || defaultEventMeta.badgeTitle;
             if(mBadge) mBadge.innerText = currentEventMeta.badgeTitle || defaultEventMeta.badgeTitle;
             if(v360) v360.innerText = currentEventMeta.vision360Title || defaultEventMeta.vision360Title;
+
+            renderExecutivosList();
+        }
+
+        function renderExecutivosList() {
+            const container = document.getElementById('executives-list-container');
+            if(!container) return;
+            container.innerHTML = "";
+
+            const rawText = currentEventMeta.executivesText || defaultEventMeta.executivesText;
+            const lines = rawText.split('\n');
+
+            lines.forEach(line => {
+                if(!line.trim()) return;
+                const parts = line.split('-');
+                const name = parts[0] ? parts[0].trim() : line.trim();
+                const company = parts[1] ? parts[1].trim() : '';
+
+                const row = document.createElement('div');
+                row.innerHTML = `${name} ${company ? `<span style="float: right; color: #38bdf8; font-weight: 600;">${company}</span>` : ''}`;
+                container.appendChild(row);
+            });
         }
 
         function switchView(mode) {
@@ -648,6 +710,24 @@
             });
         }
 
+        // FILTRAGEM / PESQUISA EM TEMPO REAL
+        function filterVotes() {
+            const term = document.getElementById('searchVotesInput').value.toLowerCase().trim();
+            if (!term) {
+                processAndRenderVotes(votesHistory);
+                return;
+            }
+            const filtered = votesHistory.filter(v => {
+                const redeMatch = (v.rede || '').toLowerCase().includes(term);
+                const answersMatch = currentSchema.some(q => {
+                    const txt = v[`${q.id}_texto`] || '';
+                    return txt.toLowerCase().includes(term);
+                });
+                return redeMatch || answersMatch;
+            });
+            processAndRenderVotes(filtered);
+        }
+
         function toggleReveal(qId) {
             const container = document.getElementById(`dash-results-${qId}`);
             if(container) container.style.display = (container.style.display === 'block') ? 'none' : 'block';
@@ -669,42 +749,93 @@
             }
         }
 
-        // EXPORTAÇÃO DE RESULTADOS EM EXCEL (CSV)
+        // EXPORTAÇÃO DE RESULTADOS EM EXCEL (.XLSX COM SHEETJS)
         function exportToExcel() {
             if (!votesHistory || votesHistory.length === 0) {
                 alert("Não há votos registrados para exportar.");
                 return;
             }
 
-            let headers = ["Data/Hora", "Loja / Rede"];
-            currentSchema.forEach((q, idx) => {
-                headers.push(`P${idx + 1}: ${q.title.replace(/;/g, ',')}`);
-            });
-
-            let csvRows = [headers.join(";")];
-
-            votesHistory.forEach(vote => {
-                let row = [
-                    `"${vote.timestamp || ''}"`,
-                    `"${(vote.rede || 'Anônimo').replace(/"/g, '""')}"`
-                ];
-                currentSchema.forEach(q => {
-                    let optIdx = vote[q.id];
-                    let ansText = (optIdx !== undefined && q.options[optIdx]) ? q.options[optIdx] : (vote[`${q.id}_texto`] || 'Não respondeu');
-                    row.push(`"${ansText.replace(/"/g, '""')}"`);
+            // Mapeamento dos dados em formato JSON para a planilha Excel
+            const exportData = votesHistory.map(vote => {
+                const row = {
+                    "Data/Hora": vote.timestamp || '',
+                    "Loja / Rede": vote.rede || 'Anônimo'
+                };
+                currentSchema.forEach((q, idx) => {
+                    const optIdx = vote[q.id];
+                    const ansText = (optIdx !== undefined && q.options[optIdx]) ? q.options[optIdx] : (vote[`${q.id}_texto`] || 'Não respondeu');
+                    row[`P${idx + 1}: ${q.title}`] = ansText;
                 });
-                csvRows.push(row.join(";"));
+                return row;
             });
 
-            const csvContent = "\uFEFF" + csvRows.join("\n");
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `Resultados_Pesquisa_${(currentEventMeta.mainTitle || 'Evento').replace(/[^a-zA-Z0-9]/g, '_')}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // Criação do Workbook e da Worksheet utilizando a SheetJS
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Respostas");
+
+            const fileName = `Resultados_Pesquisa_${(currentEventMeta.mainTitle || 'Evento').replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+        }
+
+        // IMPORTAÇÃO DE PLANILHA EXCEL (.XLSX / .XLS) VIA SHEETJS
+        function importFromExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (!jsonData || jsonData.length === 0) {
+                        alert("O arquivo selecionado está vazio ou não possui formato válido.");
+                        return;
+                    }
+
+                    const importedVotes = [];
+                    jsonData.forEach(row => {
+                        const newVote = {
+                            timestamp: row["Data/Hora"] || new Date().toLocaleString("pt-BR"),
+                            rede: row["Loja / Rede"] || "Anônimo"
+                        };
+
+                        currentSchema.forEach((q, idx) => {
+                            const colKey = Object.keys(row).find(k => k.startsWith(`P${idx + 1}:`) || k.includes(q.title));
+                            if (colKey && row[colKey] !== undefined) {
+                                const valStr = String(row[colKey]).trim();
+                                newVote[`${q.id}_texto`] = valStr;
+
+                                const matchingOptIdx = q.options.findIndex(opt => opt.trim() === valStr);
+                                if (matchingOptIdx !== -1) {
+                                    newVote[q.id] = matchingOptIdx;
+                                }
+                            }
+                        });
+                        importedVotes.push(newVote);
+                    });
+
+                    if (confirm(`Deseja importar ${importedVotes.length} registros para o sistema?`)) {
+                        votesHistory = votesHistory.concat(importedVotes);
+                        if (isFirebaseActive && db) {
+                            importedVotes.forEach(v => db.ref('enare31_votos').push(v));
+                        } else {
+                            localStorage.setItem('enare31_local_votes', JSON.stringify(votesHistory));
+                        }
+                        processAndRenderVotes(votesHistory);
+                        alert("Importação concluída com sucesso!");
+                    }
+                } catch (err) {
+                    alert("Erro ao ler o arquivo Excel: " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = ""; // Limpa a seleção do input
         }
 
         // MODAL E EDITOR CUSTOMIZÁVEL DO FORMULÁRIO E DO EVENTO
@@ -713,6 +844,7 @@
             document.getElementById('edit-sub-title-input').value = currentEventMeta.subTitle || '';
             document.getElementById('edit-badge-title-input').value = currentEventMeta.badgeTitle || '';
             document.getElementById('edit-vision-360-input').value = currentEventMeta.vision360Title || '';
+            document.getElementById('edit-executives-input').value = currentEventMeta.executivesText || defaultEventMeta.executivesText;
 
             renderEditorQuestions();
             document.getElementById('editorModal').classList.add('active');
@@ -802,10 +934,11 @@
             currentEventMeta.subTitle = document.getElementById('edit-sub-title-input').value;
             currentEventMeta.badgeTitle = document.getElementById('edit-badge-title-input').value;
             currentEventMeta.vision360Title = document.getElementById('edit-vision-360-input').value;
+            currentEventMeta.executivesText = document.getElementById('edit-executives-input').value;
 
             localStorage.setItem('enare31_event_meta', JSON.stringify(currentEventMeta));
 
-            // Salva Schema das Perguntas
+            // Salva Schema das Perguntas corrigindo a captura sequencial dos elementos do DOM
             currentSchema.forEach((q, qIdx) => {
                 q.meta = document.getElementById(`edit-meta-${qIdx}`).value;
                 q.title = document.getElementById(`edit-title-${qIdx}`).value;
@@ -813,12 +946,16 @@
 
                 const optInputs = document.querySelectorAll(`.opt-field-${qIdx}`);
                 q.options = [];
-                optInputs.forEach(input => q.options.push(input.value));
+                optInputs.forEach(input => {
+                    if (input.value.trim() !== "") {
+                        q.options.push(input.value);
+                    }
+                });
             });
 
             localStorage.setItem('enare31_custom_schema', JSON.stringify(currentSchema));
 
-            // Salva Firebase se ativo
+            // Salva no Firebase Realtime Database se conectado
             if (isFirebaseActive && db) {
                 db.ref('enare31_schema').set(currentSchema);
                 db.ref('enare31_event_meta').set(currentEventMeta);
@@ -829,7 +966,7 @@
             renderMobileFromSchema();
             processAndRenderVotes(votesHistory);
             closeEditorModal();
-            alert("Informações do evento e perguntas salvas com sucesso!");
+            alert("Informações do evento, executivos e perguntas salvas com sucesso!");
         }
     </script>
 </body>
